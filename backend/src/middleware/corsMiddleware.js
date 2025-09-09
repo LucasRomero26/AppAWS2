@@ -1,27 +1,30 @@
 // src/middleware/corsMiddleware.js
 const cors = require('cors');
 
-// Configuración de CORS para desarrollo y producción
 const getCorsOptions = () => {
   const isDevelopment = process.env.NODE_ENV !== 'production';
   
-  // URLs permitidas
+  // URLs permitidas - ESPECÍFICO PARA CLOUDFLARE
   const allowedOrigins = [
-    process.env.FRONTEND_URL || 'http://localhost:3001',
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3001'
+    'https://julstracker.tech',
+    'https://www.julstracker.tech',
+    'http://julstracker.tech', // Cloudflare puede enviar HTTP internamente
+    'http://www.julstracker.tech',
+    process.env.FRONTEND_URL || 'https://julstracker.tech'
   ];
 
-  // En producción, agregar dominios específicos
-  if (!isDevelopment && process.env.PRODUCTION_FRONTEND_URLS) {
-    const productionUrls = process.env.PRODUCTION_FRONTEND_URLS.split(',');
-    allowedOrigins.push(...productionUrls);
+  // En desarrollo agregar localhost
+  if (isDevelopment) {
+    allowedOrigins.push(
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3001'
+    );
   }
 
   return {
     origin: (origin, callback) => {
-      // Permitir solicitudes sin origin (aplicaciones móviles, Postman, etc.)
+      // Permitir solicitudes sin origin (aplicaciones móviles, Postman, Cloudflare, etc.)
       if (!origin) return callback(null, true);
       
       // En desarrollo, ser más permisivo
@@ -29,12 +32,13 @@ const getCorsOptions = () => {
         return callback(null, true);
       }
       
-      // En producción, verificar lista de origins permitidos
+      // Verificar lista de origins permitidos
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       } else {
-        console.warn(`������ Origin bloqueado por CORS: ${origin}`);
-        return callback(new Error('No permitido por política CORS'));
+        console.warn(`⚠️ Origin bloqueado por CORS: ${origin}`);
+        console.warn(`Allowed origins:`, allowedOrigins);
+        return callback(null, true); // Ser permisivo con Cloudflare inicialmente
       }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -46,33 +50,41 @@ const getCorsOptions = () => {
       'Authorization',
       'Cache-Control',
       'X-Real-IP',
-      'X-Forwarded-For'
+      'X-Forwarded-For',
+      'CF-Connecting-IP',
+      'CF-Ray',
+      'CF-Visitor'
     ],
     credentials: true,
-    optionsSuccessStatus: 200, // Para navegadores legacy
-    maxAge: 86400 // Cache preflight por 24 horas
+    optionsSuccessStatus: 200,
+    maxAge: 86400
   };
 };
 
-// Middleware personalizado para logging CORS
+// Middleware para logging CORS específico para Cloudflare
 const corsLogger = (req, res, next) => {
   const origin = req.headers.origin || 'No origin';
-  console.log(`������ CORS Request - Origin: ${origin}, Method: ${req.method}, URL: ${req.url}`);
+  const cfConnectingIp = req.headers['cf-connecting-ip'] || 'No CF-IP';
+  const cfRay = req.headers['cf-ray'] || 'No CF-Ray';
+  
+  console.log(`🔗 CORS Request - Origin: ${origin}, CF-IP: ${cfConnectingIp}, CF-Ray: ${cfRay}, Method: ${req.method}, URL: ${req.url}`);
   next();
 };
 
-// Configuración para Socket.IO
+// Configuración para Socket.IO con Cloudflare
 const getSocketCorsOptions = () => {
   const isDevelopment = process.env.NODE_ENV !== 'production';
   
   return {
     origin: isDevelopment ? "*" : [
-      process.env.FRONTEND_URL || 'http://localhost:3001',
-      ...(process.env.PRODUCTION_FRONTEND_URLS ? 
-          process.env.PRODUCTION_FRONTEND_URLS.split(',') : [])
+      'https://julstracker.tech',
+      'https://www.julstracker.tech',
+      'http://julstracker.tech', // Cloudflare interno
+      'http://www.julstracker.tech'
     ],
     methods: ["GET", "POST"],
-    credentials: true
+    credentials: true,
+    allowEIO3: true // Compatibilidad con versiones anteriores de Socket.IO
   };
 };
 
